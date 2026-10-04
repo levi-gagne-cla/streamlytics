@@ -1,151 +1,72 @@
-# 🎵 Streamlytics - Billboard 100 Analyzer
+# Streamlytics
 
-A **Streamlit** web application that enables users to **fetch, analyze, and visualize Billboard Top 100 charts** using Spotify and Cover Art data. This tool provides a seamless way to:
-- Fetch & enrich Billboard data from a given week.
-- Download cover art for the Billboard songs.
-- Generate posters from album cover art.
-- Authenticate and interact with Spotify.
+A small Spotify playlist poster studio built with Streamlit. Choose a playlist or your current top tracks, customize a Gallery or Receipt poster, and download a PNG. One page, one workflow.
 
-Additionally, the app includes **analytics, playback tracking, and cover art visualization**.
+This rewrite is a separate proposal on `rewrite/playlist-studio`. The original app remains in `main`; opening this pull request does not deploy the rewrite.
 
----
+## Try it
 
-## 📌 Features
+Use Python 3.12:
 
-✔ **Billboard Data Processing** - Fetches Billboard Top 100 data for a given week.  
-✔ **Spotify Enrichment** - Adds Spotify metadata like album cover art, track ID, and audio features.  
-✔ **Cover Art Download** - Saves high-quality cover art for the Billboard songs.  
-✔ **Poster Creation** - Generates beautiful collages and posters from the collected cover art.  
-✔ **Spotify Authentication** - Allows users to connect their Spotify account.  
-✔ **Analytics & Trends** - Provides **detailed insights into playback history, downloads, and streaming statistics**.  
-✔ **Playlist Cover Art** - Generates and customizes cover images using Spotify album covers.  
-✔ **Interactive UI** - Built with **Streamlit** for an easy-to-use interface.  
-
----
-
-## 🚀 Installation
-
-### **1. Clone the Repository**
 ```sh
-git clone https://github.com/your-username/streamlytics.git
+git clone https://github.com/levi-gagne-cla/streamlytics.git
 cd streamlytics
+git switch rewrite/playlist-studio
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
 ```
 
-### **2. Create a Virtual Environment (Recommended)**
+On Windows, activate with `.venv\Scripts\activate`.
+
+The offline demo needs no Spotify account, configuration, or API connection. Its invented tracks and original geometric cover tiles are labeled as demo content.
+
+## Connect your Spotify account
+
+Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`, then set:
+
+```toml
+[spotify]
+client_id = "your-spotify-client-id"
+redirect_uri = "http://127.0.0.1:8501/"
+```
+
+Register that exact Home URL in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). Open **http://127.0.0.1:8501/** and complete login in the same browser tab. Spotify rejects `localhost` redirect aliases. When hosted, use the exact HTTPS app URL instead.
+
+The app uses Authorization Code with PKCE: no client secret, no owner token in config, no shared disk token cache. It verifies callback state and keeps each user's Spotify tokens in their Streamlit session. Disconnect clears that session's data; removing the grant requires [Spotify account → Apps](https://www.spotify.com/account/apps/). [Privacy and account control](docs/privacy.md)
+
+## Sources and output
+
+| Source | What it means |
+| --- | --- |
+| Your playlists | Owned or followed playlists returned for the connected account |
+| Saved year-end playlists | Opens the newest accessible saved `Your Top Songs YYYY` match; choose another year when available |
+| My top tracks | Opens the approximate one-year affinity list in one click; switch to four weeks or six months |
+| Offline demo | Invented tracks and original generated color tiles |
+
+The app does not fetch official Wrapped results, exact calendar-year listening counts, or a complete listening archive. A saved year-end playlist is a playlist source, not a Wrapped API response. Spotify's release date for future Wrapped content is not promised by this app.
+
+Posters use Gallery or Receipt layouts, Paper/Midnight/Mint themes, and up to 36 tracks. Downloads are **2400 × 3000 PNGs**. Covers keep their aspect ratio. Spotify outputs carry attribution, playlist links when available, and track links in PNG metadata; the app also links each track. Track lists, fetched images, and generated PNGs stay in session memory; the app writes no user outputs to shared server directories.
+
+Spotify API access still depends on the app's quota mode, allowlist, and endpoint access. An older client may have access that a newly created client lacks. See [deployment and compatibility](docs/deployment.md).
+
+## Development and deployment
+
 ```sh
-python -m venv venv
-source venv/bin/activate  # On MacOS/Linux
-venv\Scripts\activate   # On Windows
+python -m pip install -r requirements-dev.txt
+python -m ruff check .
+python -m pytest -q
+node --test tests/auth_component.test.cjs
+python -m compileall -q app.py spotify.py auth_component.py catalog.py posters.py tests
 ```
 
-### **3. Install Dependencies**
-```sh
-pip install -r requirements.txt
-```
+Node 22 runs the browser-component protocol tests; no npm build is needed. CI checks the whole Python codebase, auth/source/rendering tests, component protocol, compilation, and Streamlit server startup. It does not perform live Spotify authorization. [Contributing](CONTRIBUTING.md)
 
-### **4. Set Up Spotify API Credentials**
-You need **Spotify API credentials** to fetch metadata and cover art.
+Community Cloud can deploy `app.py` from a GitHub branch after one-time configuration. Protect the deployment branch with the CI check before merge; Cloud does not wait for Actions. [Deployment guide](docs/deployment.md)
 
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
-2. Create an application.
-3. Get your **Client ID** and **Client Secret**.
-4. Create a `.env` file in the root directory and add:
-    ```sh
-    SPOTIPY_CLIENT_ID="your-client-id"
-    SPOTIPY_CLIENT_SECRET="your-client-secret"
-    SPOTIPY_REDIRECT_URI="http://localhost:8888/callback"
-    ```
+## Before public release
 
-### **5. Run the Streamlit App**
-```sh
-streamlit run streamlytics/pages/4_Billboard_100.py
-```
+The PNG feature works for personal beta testing. That does not establish permission to redistribute Spotify artwork: its policy restricts standalone content products, and the interpretation for downloadable collages remains unresolved. Review attribution, links, artwork treatment, and distribution rights before a public launch. [Product scope and release checks](docs/product.md)
 
----
-
-## 📂 File Structure
-```
-streamlytics/
-│-- pages/
-│   ├── 1_Analytics.py            # Analytics dashboard
-│   ├── 2_Playback.py             # Playback tracking and insights
-│   ├── 3_Download_Statistics.py   # Download statistics visualization
-│   ├── 4_Billboard_100.py        # Billboard Top 100 fetching and enrichment
-│   ├── 5_Playlist_Cover_Art.py   # Playlist cover art generator
-│   ├── 6_Top_Tracks_Cover_Art.py # Top track cover art visualization
-│-- data/                         # Contains Billboard Parquet files
-│-- json/                         # Stores JSON outputs
-│-- fonts/                        # Font files for posters
-│-- coverArt.py                   # Handles fetching Billboard data
-│-- spotify_cover_art.py          # Manages Spotify authentication and cover art retrieval
-│-- image_processing.py           # Processes images, creates posters
-│-- utils.py                      # Utility functions
-│-- requirements.txt              # Python dependencies
-│-- README.md                     # This file
-```
-
----
-
-## 🎨 Page Descriptions
-
-### 📊 **1_Analytics.py**  
-_Provides analytics and insights on streaming data, visualizing trends, and usage patterns._
-
-### 🎶 **2_Playback.py**  
-_Manages playback statistics, allowing users to analyze their listening history._
-
-### 📥 **3_Download_Statistics.py**  
-_Displays download statistics for various songs and albums, showing trends over time._
-
-### 🎼 **4_Billboard_100.py**  
-_Fetches and enriches Billboard Top 100 chart data, allowing users to view rankings and create posters._
-
-### 🎨 **5_Playlist_Cover_Art.py**  
-_Generates and customizes cover art for playlists using album images and user preferences._
-
-### 🖼 **6_Top_Tracks_Cover_Art.py**  
-_Creates collages and visualizations using the top tracks' cover art._
-
----
-
-## 🛠 Troubleshooting
-
-### **1. Spotify Authentication Error**
-- Ensure you have added the **correct redirect URI** in the Spotify Developer Dashboard.
-- Make sure your **client ID and secret** are correct in the `.env` file.
-
-### **2. Streamlit App Won’t Run**
-- Ensure you have activated the virtual environment (`venv`).
-- Run `pip install -r requirements.txt` to install missing dependencies.
-
-### **3. Cover Art Not Downloading**
-- Ensure the **JSON file exists** before downloading cover art.
-- Try running the fetch step again to regenerate the JSON.
-
----
-
-## 📜 License
-This project is **open-source** under the MIT License. Feel free to contribute and improve it!
-
----
-
-## 🤝 Contributing
-We welcome contributions! Feel free to submit a pull request or open an issue.
-
-1. **Fork** the repository.
-2. **Create a branch** (`git checkout -b feature-branch`).
-3. **Commit your changes** (`git commit -m "Add new feature"`).
-4. **Push to your fork** (`git push origin feature-branch`).
-5. **Submit a pull request**!
-
----
-
-## 🌟 Acknowledgments
-Special thanks to **Billboard, Spotify, and Streamlit** for the inspiration behind this project! 🎶
-
----
-
-## 📧 Contact
-For any inquiries or suggestions, feel free to reach out via GitHub Issues.
-
----
+No software license has been chosen or added. Decide on one before presenting the project as open source; Spotify content remains subject to its own terms. See [third-party asset notes](THIRD_PARTY.md). Streamlytics is an independent personal project and is not endorsed by Spotify.

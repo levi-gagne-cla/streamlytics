@@ -1,7 +1,4 @@
-streamlit
-pandas
-numpy
-matplotlib
-Pillow
-spotipy
-pyarrow
+streamlit==1.55.0
+Pillow>=12.1,<13
+spotipy==2.25.2
+requests>=2.32,<3

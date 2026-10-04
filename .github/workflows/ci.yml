@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Set up Node for browser-component protocol tests
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint Python sources
+        run: python -m ruff check .
+
+      - name: Run application regression tests
+        run: python -m pytest -q
+
+      - name: Run browser-component protocol tests
+        run: node --test tests/auth_component.test.cjs
+
+      - name: Compile all application sources
+        run: >-
+          python -m compileall -q app.py spotify.py auth_component.py catalog.py
+          posters.py tests
+
+      - name: Check Streamlit server health without Spotify credentials
+        run: |
+          python - <<'PY'
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          with tempfile.TemporaryDirectory() as temp_dir:
+              log_path = Path(temp_dir) / "streamlit.log"
+              with log_path.open("w") as log:
+                  process = subprocess.Popen(
+                      [
+                          sys.executable, "-m", "streamlit", "run", "app.py",
+                          "--server.headless", "true",
+                          "--server.address", "127.0.0.1",
+                          "--server.port", "8501",
+                          "--browser.gatherUsageStats", "false",
+                      ],
+                      stdout=log,
+                      stderr=subprocess.STDOUT,
+                  )
+                  try:
+                      for _ in range(30):
+                          if process.poll() is not None:
+                              raise RuntimeError("Streamlit exited before becoming healthy")
+                          try:
+                              with urllib.request.urlopen(
+                                  "http://127.0.0.1:8501/_stcore/health", timeout=1
+                              ) as response:
+                                  if response.status == 200 and response.read().strip() == b"ok":
+                                      print("Streamlit health check passed")
+                                      break
+                          except (OSError, urllib.error.URLError):
+                              pass
+                          time.sleep(1)
+                      else:
+                          raise RuntimeError("Streamlit health check timed out")
+                  except Exception:
+                      log.flush()
+                      print(log_path.read_text())
+                      raise
+                  finally:
+                      process.terminate()
+                      try:
+                          process.wait(timeout=5)
+                      except subprocess.TimeoutExpired:
+                          process.kill()
+                          process.wait()
+          PY
