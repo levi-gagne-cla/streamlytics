@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="referrer" content="no-referrer">
+<style>
+body { margin: 0; font: 16px sans-serif; color: #ddd; }
+a { display: inline-block; padding: 12px 18px; border-radius: 6px; color: #000;
+    background: #1ed760; text-decoration: none; font-weight: 600; }
+p { margin: 4px 0; }
+</style></head>
+<body><div id="content"></div>
+<script>
+// Only the pending state/verifier survive navigation; tokens never enter this frame.
+const content = document.getElementById("content");
+const send = (type, data = {}) => window.parent.postMessage(
+  { isStreamlitMessage: true, type, ...data }, window.location.origin
+);
+const value = result => send("streamlit:setComponentValue", { value: result });
+const base64url = bytes => btoa(String.fromCharCode(...bytes))
+  .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+let completed = null;
+let completedValue = null;
+let generation = 0;
+let emittedLoginUrl = null;
+
+async function render(args) {
+  const current = ++generation;
+  const signature = JSON.stringify([args.action, args.storage_key, args.callback_state]);
+  if (args.action !== "login" && signature === completed) {
+    value(completedValue);
+    return;
+  }
+  try {
+    if (args.action === "clear") {
+      emittedLoginUrl = null;
+      sessionStorage.removeItem(args.storage_key);
+      completed = signature;
+      completedValue = { status: "cleared" };
+      value(completedValue);
+      content.replaceChildren();
+      send("streamlit:setFrameHeight", { height: 0 });
+      return;
+    }
+    const raw = sessionStorage.getItem(args.storage_key);
+    let pending;
+    try { pending = raw ? JSON.parse(raw) : null; } catch { pending = null; }
+    const age = Date.now() / 1000 - pending?.created_at;
+    if (!pending || !Number.isFinite(age) || age < 0 || age > args.ttl_seconds) {
+      pending = null;
+      sessionStorage.removeItem(args.storage_key);
+    }
+    if (args.action === "consume") {
+      emittedLoginUrl = null;
+      const matched = pending && pending.state === args.callback_state;
+      if (matched) sessionStorage.removeItem(args.storage_key);
+      completed = signature;
+      completedValue = { status: matched ? "ready" : "missing", pending: matched ? pending : null };
+      value(completedValue);
+      content.replaceChildren();
+      send("streamlit:setFrameHeight", { height: 0 });
+      return;
+    }
+    if (args.action !== "login") throw new Error("Unknown auth operation");
+    completed = null;
+    if (!pending) {
+      pending = {
+        state: base64url(crypto.getRandomValues(new Uint8Array(32))),
+        verifier: base64url(crypto.getRandomValues(new Uint8Array(64))),
+        created_at: Date.now() / 1000
+      };
+      sessionStorage.setItem(args.storage_key, JSON.stringify(pending));
+    }
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pending.verifier));
+    if (current !== generation) return;
+    const url = new URL(args.authorize_url);
+    if (url.origin !== "https://accounts.spotify.com" || url.pathname !== "/authorize") {
+      throw new Error("Invalid authorization destination");
+    }
+    url.searchParams.set("state", pending.state);
+    url.searchParams.set("code_challenge", base64url(new Uint8Array(digest)));
+    url.searchParams.set("code_challenge_method", "S256");
+    if (emittedLoginUrl !== url.href) {
+      emittedLoginUrl = url.href;
+      value({ status: "login_ready", authorize_url: url.href });
+    }
+    content.replaceChildren();
+    send("streamlit:setFrameHeight", { height: 0 });
+  } catch {
+    const message = document.createElement("p");
+    message.textContent = "Browser storage is unavailable. Enable session storage and start a new Spotify login.";
+    content.replaceChildren(message);
+    value({ status: "unavailable", pending: null });
+    send("streamlit:setFrameHeight", { height: 58 });
+  }
+}
+window.addEventListener("message", event => {
+  if (event.source !== window.parent || event.origin !== window.location.origin) return;
+  if (event.data.type === "streamlit:render") render(event.data.args);
+});
+send("streamlit:componentReady", { apiVersion: 1 });
+</script></body></html>

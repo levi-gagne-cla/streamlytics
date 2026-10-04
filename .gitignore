@@ -1,0 +1,28 @@
+# Credentials and legacy Spotipy token caches
+.streamlit/secrets.toml
+.env
+.env.*
+!.env.example
+.cache
+.cache-*
+
+# Local Python/test environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime artifacts; existing tracked examples remain tracked
+json/*.json
+data/cover_art/
+data/outputs/
+outputs/
+
+# Local editor/OS files
+.DS_Store
+.vscode/
+*.log

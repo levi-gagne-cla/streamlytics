@@ -1,7 +1,8 @@
-streamlit
+streamlit==1.55.0
 pandas
 numpy
 matplotlib
 Pillow
-spotipy
+spotipy==2.25.2
 pyarrow
+requests>=2.32,<3

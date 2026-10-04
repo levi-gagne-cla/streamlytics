@@ -1,7 +1,7 @@
 # app.py
 
 import streamlit as st
-from spotify import get_spotify_client, is_spotify_logged_in
+from spotify import get_spotify_client, is_spotify_logged_in, logout_spotify
 
 # Define green shades
 green_shades = [
@@ -55,21 +55,30 @@ def main():
     
     st.write("Click the button below to log in to Spotify and start exploring your analytics.")
 
-    # Login Button: flip a flag; get_spotify_client() does the real work
-    if st.button("Log in to Spotify"):
+    if st.session_state.get("spotify_logout_pending"):
+        logout_spotify()
+
+    # External OAuth navigation creates a new session: process its callback directly.
+    callback = any(key in st.query_params for key in ("code", "state", "error", "error_description"))
+    if not is_spotify_logged_in() and st.button("Log in to Spotify"):
         st.session_state.spotify_auth_started = True
 
     # If auth has been started, try to run the OAuth flow
-    if st.session_state.spotify_auth_started:
+    if callback or is_spotify_logged_in() or st.session_state.spotify_auth_started:
         # This will either:
         # - show a login link and st.stop(), or
         # - complete the code exchange and store the token,
         # - or return a ready client (which we don't need to hold here).
-        _ = get_spotify_client()
+        get_spotify_client()
 
     # Status section
     if is_spotify_logged_in():
-        st.success("You are logged in! Navigate to the Analytics and Playlist Cover Art pages for insights.")
+        user = st.session_state.spotify_user
+        st.success(f"Connected to Spotify as {user.get('display_name') or user['id']} ({user['id']}).")
+        st.caption("Playback controls use this account. To switch accounts, disconnect and sign into the other account on Spotify.")
+        st.link_button("Manage Spotify app access", "https://www.spotify.com/account/apps/")
+        if st.button("Disconnect Spotify"):
+            logout_spotify()
     else:
         st.warning("Not logged in. Please log in to access Spotify data.")
     
